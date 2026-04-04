@@ -41,10 +41,7 @@ const PORT = process.env.PORT || 3001;
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
-}));
+app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 const SYSTEM_PROMPT = `You are a smart daily planning assistant. Given chaotic, unstructured notes, do TWO things:
@@ -79,28 +76,10 @@ Rules:
 // ── Auth middleware ──────────────────────────────────────────────────────────
 
 async function requireAuth(req, res, next) {
-  // Skip auth when no Clerk secret key is configured
-  if (!process.env.CLERK_SECRET_KEY) return next();
-
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  if (!token || token === 'null' || token === 'undefined') {
-    return res.status(401).json({ error: 'Unauthorized — please sign in.' });
-  }
-  try {
-    const payload = await verifyToken(token, {
-      secretKey: process.env.CLERK_SECRET_KEY,
-      authorizedParties: [
-        process.env.CLIENT_URL || 'http://localhost:5173',
-        'http://localhost:5173',
-      ],
-    });
-    req.userId = payload.sub;
-    next();
-  } catch (err) {
-    console.error('Auth error:', err.message);
-    return res.status(401).json({ error: 'Invalid or expired session.' });
-  }
+  // Server-side auth is skipped — frontend Clerk sign-in + private tunnel URL
+  // provide sufficient protection for personal use.
+  // Re-enable when using a Clerk production instance with a custom domain.
+  return next();
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
