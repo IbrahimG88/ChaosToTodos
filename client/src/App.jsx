@@ -552,14 +552,14 @@ function AppInner() {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 180000);
-      const token = await getToken();
+      const token = await getToken({ skipCache: true });
       let res;
       try {
         res = await fetch(`${API_URL}/api/parse`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
+            ...(token && { 'Authorization': `Bearer ${token}` }),
           },
           body: JSON.stringify({ text: inputText }),
           signal: controller.signal,

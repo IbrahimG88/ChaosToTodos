@@ -1,12 +1,43 @@
 import express from 'express';
 import cors from 'cors';
-import Anthropic from '@anthropic-ai/sdk';
-import { createClerkClient } from '@clerk/backend';
+import { createClerkClient, verifyToken } from '@clerk/backend';
+
+// Use real Anthropic SDK when API key is present, otherwise fall back to
+// the local Claude Code agent SDK (works with Claude Pro subscription)
+let callClaude;
+if (process.env.ANTHROPIC_API_KEY) {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  callClaude = async (text, systemPrompt) => {
+    const msg = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: text }],
+    });
+    return msg.content[0]?.text ?? '';
+  };
+} else {
+  const { query } = await import('@anthropic-ai/claude-agent-sdk');
+  callClaude = async (text, systemPrompt) => {
+    let result = '';
+    for await (const msg of query({
+      prompt: text,
+      options: {
+        systemPrompt,
+        allowedTools: [],
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
+      },
+    })) {
+      if (msg.type === 'result' && msg.subtype === 'success') result = msg.result ?? '';
+    }
+    return result;
+  };
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
@@ -48,16 +79,26 @@ Rules:
 // ── Auth middleware ──────────────────────────────────────────────────────────
 
 async function requireAuth(req, res, next) {
-  // Skip auth in local dev when no Clerk secret is configured
+  // Skip auth when no Clerk secret key is configured
   if (!process.env.CLERK_SECRET_KEY) return next();
 
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token || token === 'null' || token === 'undefined') {
+    return res.status(401).json({ error: 'Unauthorized — please sign in.' });
+  }
   try {
-    const payload = await clerk.verifyToken(token);
+    const payload = await verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+      authorizedParties: [
+        process.env.CLIENT_URL || 'http://localhost:5173',
+        'http://localhost:5173',
+      ],
+    });
     req.userId = payload.sub;
     next();
-  } catch {
+  } catch (err) {
+    console.error('Auth error:', err.message);
     return res.status(401).json({ error: 'Invalid or expired session.' });
   }
 }
@@ -80,15 +121,9 @@ app.post('/api/parse', requireAuth, async (req, res) => {
 
   let resultText = '';
   try {
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: text.trim() }],
-    });
-    resultText = message.content[0]?.text ?? '';
+    resultText = await callClaude(text.trim(), SYSTEM_PROMPT);
   } catch (err) {
-    console.error('Anthropic API error:', err);
+    console.error('Claude error:', err);
     return res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 

@@ -4,10 +4,11 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "start": "node --env-file=.env index.js",
+    "dev": "node --env-file=.env --watch index.js"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest",
     "@anthropic-ai/sdk": "^0.39.0",
     "@clerk/backend": "^1.26.0",
     "cors": "^2.8.5",
