@@ -16,8 +16,9 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Only cache GET requests; let API calls pass through
+  // Only cache GET requests over http/https
   if (e.request.method !== 'GET') return;
+  if (!e.request.url.startsWith('http')) return;
   if (e.request.url.includes('/api/')) return;
 
   e.respondWith(
