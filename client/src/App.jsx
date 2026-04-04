@@ -394,6 +394,8 @@ function AppInner() {
   const [catMeta,  setCatMeta]  = useState(() => load('ctd_cats',  {}));
   const [inputText, setInputText] = useState('');
   const [loading,  setLoading]  = useState(false);
+  const [elapsed,  setElapsed]  = useState(0);
+  const elapsedRef = useRef(null);
   const [parseErr, setParseErr] = useState('');
   const [analysis, setAnalysis] = useState(null);
   const [search,   setSearch]   = useState('');
@@ -549,31 +551,38 @@ function AppInner() {
     if (!inputText.trim()) { setParseErr('Please enter some text first.'); return; }
     setParseErr('');
     setLoading(true);
+    setElapsed(0);
+    elapsedRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 180000);
       const token = await getToken({ skipCache: true });
-      let res;
-      try {
-        res = await fetch(`${API_URL}/api/parse`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token && { 'Authorization': `Bearer ${token}` }),
-          },
-          body: JSON.stringify({ text: inputText }),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      };
+
+      // Step 1 — start job (returns immediately)
+      const startRes = await fetch(`${API_URL}/api/parse`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text: inputText }),
+      });
+      const startData = await startRes.json();
+      if (!startRes.ok) throw new Error(startData.error || `Error ${startRes.status}`);
+      const { jobId } = startData;
+
+      // Step 2 — poll until done
+      const deadline = Date.now() + 160000;
       let data;
-      try {
-        data = await res.json();
-      } catch {
-        throw new Error('The server returned an empty response. Please try again.');
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 2000));
+        const pollRes = await fetch(`${API_URL}/api/parse/${jobId}`, { headers });
+        data = await pollRes.json();
+        if (!pollRes.ok) throw new Error(data.error || `Error ${pollRes.status}`);
+        if (data.status === 'done' || data.status === 'error') break;
       }
-      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+
+      if (!data || data.status === 'processing') throw new Error('Timed out. Try splitting your text into smaller chunks.');
+      if (data.status === 'error') throw new Error(data.error);
 
       setAnalysis(data.analysis || null);
 
@@ -600,6 +609,7 @@ function AppInner() {
     } catch (err) {
       setParseErr(err.message || 'Something went wrong. Please try again.');
     } finally {
+      clearInterval(elapsedRef.current);
       setLoading(false);
     }
   };
@@ -728,7 +738,9 @@ function AppInner() {
         {loading && (
           <div className="loading-state">
             <div className="loading-dots"><span /><span /><span /></div>
-            <p>Claude is reading your chaos… this can take 30–60 seconds.</p>
+            <p>Claude is reading your chaos… <span className="elapsed">{elapsed}s</span></p>
+            {elapsed > 30 && <p className="elapsed-hint">Large text takes longer — still working…</p>}
+            {elapsed > 90 && <p className="elapsed-hint">Almost there, hang tight…</p>}
           </div>
         )}
 

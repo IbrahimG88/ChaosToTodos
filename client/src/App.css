@@ -737,6 +737,10 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Elapsed timer ── */
+.elapsed { font-weight: 600; color: var(--primary); }
+.elapsed-hint { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .hdr-inner { flex-wrap: wrap; gap: 10px; }

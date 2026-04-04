@@ -82,68 +82,80 @@ async function requireAuth(req, res, next) {
   return next();
 }
 
+// ── Job store (in-memory) ────────────────────────────────────────────────────
+
+const jobs = new Map();
+const uid  = () => Math.random().toString(36).slice(2, 11);
+
+function processText(jobId, text) {
+  const VALID_DAYS = new Set(['today','monday','tuesday','wednesday','thursday','friday','saturday','sunday','someday']);
+  const VALID_IMP  = new Set(['high','medium','low']);
+
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('timeout')), 150000)
+  );
+
+  Promise.race([callClaude(text, SYSTEM_PROMPT), timeout])
+    .then(resultText => {
+      if (!resultText) throw new Error('empty');
+      const stripped = resultText.replace(/^```(?:json)?\s*/im, '').replace(/\s*```\s*$/im, '').trim();
+      const start = stripped.indexOf('{');
+      const end   = stripped.lastIndexOf('}');
+      const parsed = JSON.parse(start !== -1 && end !== -1 ? stripped.slice(start, end + 1) : stripped);
+
+      const rawTodos = Array.isArray(parsed) ? parsed : (parsed?.todos ?? []);
+      const todos = rawTodos
+        .filter(t => t && typeof t.task === 'string' && t.task.trim())
+        .map(t => ({
+          task:       String(t.task).trim(),
+          day:        VALID_DAYS.has(String(t.day).toLowerCase()) ? String(t.day).toLowerCase() : 'someday',
+          importance: VALID_IMP.has(String(t.importance).toLowerCase()) ? String(t.importance).toLowerCase() : 'medium',
+          category:   t.category ? String(t.category).trim() : 'General',
+          subtasks:   Array.isArray(t.subtasks)
+                        ? t.subtasks.filter(s => typeof s === 'string' && s.trim()).map(s => String(s).trim())
+                        : [],
+        }));
+
+      jobs.set(jobId, { status: 'done', analysis: parsed?.analysis ?? null, todos });
+    })
+    .catch(err => {
+      const msg = err.message === 'timeout'
+        ? 'Claude took too long. Try splitting your text into smaller chunks.'
+        : err.message === 'empty'
+        ? 'The AI returned an empty response. Please try again.'
+        : 'Something went wrong. Please try again.';
+      jobs.set(jobId, { status: 'error', error: msg });
+    });
+
+  // Auto-cleanup after 10 minutes
+  setTimeout(() => jobs.delete(jobId), 600000);
+}
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.post('/api/parse', requireAuth, async (req, res) => {
+// Start a parse job — returns immediately with a jobId
+app.post('/api/parse', requireAuth, (req, res) => {
   const { text } = req.body;
-
-  if (!text || typeof text !== 'string' || text.trim().length === 0) {
+  if (!text || typeof text !== 'string' || text.trim().length === 0)
     return res.status(400).json({ error: 'text is required and must be a non-empty string.' });
-  }
-  if (text.length > 20000) {
+  if (text.length > 20000)
     return res.status(400).json({ error: 'Text is too long. Please limit to 20,000 characters.' });
-  }
 
-  let resultText = '';
-  try {
-    resultText = await callClaude(text.trim(), SYSTEM_PROMPT);
-  } catch (err) {
-    console.error('Claude error:', err);
-    return res.status(500).json({ error: 'Something went wrong. Please try again.' });
-  }
+  const jobId = uid();
+  jobs.set(jobId, { status: 'processing' });
+  processText(jobId, text.trim());
+  res.json({ jobId });
+});
 
-  if (!resultText) {
-    return res.status(500).json({ error: 'The AI returned an empty response. Please try again.' });
-  }
-
-  let parsed;
-  try {
-    const stripped = resultText
-      .replace(/^```(?:json)?\s*/im, '')
-      .replace(/\s*```\s*$/im, '')
-      .trim();
-    const start = stripped.indexOf('{');
-    const end   = stripped.lastIndexOf('}');
-    const jsonStr = start !== -1 && end !== -1 ? stripped.slice(start, end + 1) : stripped;
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    console.error('JSON parse failed:', resultText);
-    return res.status(500).json({ error: 'The AI returned an unexpected format. Please try again.' });
-  }
-
-  const analysis = parsed?.analysis ?? null;
-  const rawTodos = Array.isArray(parsed) ? parsed : (parsed?.todos ?? []);
-
-  const VALID_DAYS = new Set(['today','monday','tuesday','wednesday','thursday','friday','saturday','sunday','someday']);
-  const VALID_IMP  = new Set(['high','medium','low']);
-
-  const todos = rawTodos
-    .filter(t => t && typeof t.task === 'string' && t.task.trim())
-    .map(t => ({
-      task:       String(t.task).trim(),
-      day:        VALID_DAYS.has(String(t.day).toLowerCase()) ? String(t.day).toLowerCase() : 'someday',
-      importance: VALID_IMP.has(String(t.importance).toLowerCase()) ? String(t.importance).toLowerCase() : 'medium',
-      category:   t.category ? String(t.category).trim() : 'General',
-      subtasks:   Array.isArray(t.subtasks)
-                    ? t.subtasks.filter(s => typeof s === 'string' && s.trim()).map(s => String(s).trim())
-                    : [],
-    }));
-
-  res.json({ analysis, todos });
+// Poll for job result
+app.get('/api/parse/:jobId', requireAuth, (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found or expired.' });
+  res.json(job);
 });
 
 app.listen(PORT, () => {
