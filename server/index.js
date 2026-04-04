@@ -42,6 +42,13 @@ const PORT = process.env.PORT || 3001;
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
 app.use(cors());
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
 
 const SYSTEM_PROMPT = `You are a smart daily planning assistant. Given chaotic, unstructured notes, do TWO things:
