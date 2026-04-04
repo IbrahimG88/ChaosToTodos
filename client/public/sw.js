@@ -1,4 +1,4 @@
-const CACHE = 'ctd-v1';
+const CACHE = 'ctd-v2';
 const STATIC = ['/'];
 
 self.addEventListener('install', e => {
