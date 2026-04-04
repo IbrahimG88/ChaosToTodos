@@ -615,14 +615,18 @@ function AppInner() {
 
   // ─── Derived data ───────────────────────────────────────────
 
+  const todayStr = localDateStr(new Date());
+
   const allCatNames = useMemo(() => {
     const fromMeta  = Object.keys(catMeta);
     const fromTodos = [...new Set(todos.map(t => t.category).filter(Boolean))];
-    return [...new Set([...fromMeta, ...fromTodos])].sort();
-  }, [catMeta, todos]);
+    const regular   = [...new Set([...fromMeta, ...fromTodos])].sort();
+    const hasToday  = todos.some(t => t.dueDate === todayStr);
+    return hasToday ? ['Today', ...regular.filter(c => c !== 'Today')] : regular;
+  }, [catMeta, todos, todayStr]);
 
-  const visibleCatNames = allCatNames.filter(n => catMeta[n]?.visible !== false);
-  const allVisible      = allCatNames.length > 0 && allCatNames.every(n => catMeta[n]?.visible !== false);
+  const visibleCatNames = allCatNames.filter(n => n === 'Today' || catMeta[n]?.visible !== false);
+  const allVisible      = allCatNames.length > 0 && allCatNames.every(n => n === 'Today' || catMeta[n]?.visible !== false);
 
   const filteredTodos = useMemo(() =>
     todos.filter(t =>
@@ -633,8 +637,9 @@ function AppInner() {
   const todosByCat = useMemo(() => {
     const map = {};
     for (const t of filteredTodos) {
-      if (!map[t.category]) map[t.category] = [];
-      map[t.category].push(t);
+      const bucket = t.dueDate === todayStr ? 'Today' : t.category;
+      if (!map[bucket]) map[bucket] = [];
+      map[bucket].push(t);
     }
     return map;
   }, [filteredTodos]);
@@ -760,7 +765,7 @@ function AppInner() {
                     All Categories
                   </button>
                   {allCatNames.map(name => {
-                    const meta = catMeta[name] ?? { color: '#6366f1', visible: true };
+                    const meta = catMeta[name] ?? { color: name === 'Today' ? '#f59e0b' : '#6366f1', visible: true };
                     const on   = meta.visible !== false;
                     return (
                       <button
@@ -825,8 +830,8 @@ function AppInner() {
 
             {/* Category blocks */}
             <div className="cat-grid">
-              {visibleCatNames.map(name => {
-                const meta     = catMeta[name] ?? { color: '#6366f1' };
+              {visibleCatNames.filter(name => !search || (todosByCat[name] || []).length > 0).map(name => {
+                const meta     = catMeta[name] ?? { color: name === 'Today' ? '#f59e0b' : '#6366f1' };
                 const catTodos = todosByCat[name] || [];
                 return (
                   <CategoryBlock
