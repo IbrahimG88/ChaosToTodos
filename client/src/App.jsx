@@ -569,7 +569,7 @@ function AppInner() {
       let data;
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 2000));
-        const pollRes = await fetch(`${API_URL}/api/parse/${jobId}`);
+        const pollRes = await fetch(`${API_URL}/api/poll?jobId=${jobId}`);
         data = await pollRes.json();
         if (!pollRes.ok) throw new Error(data.error || `Error ${pollRes.status}`);
         if (data.status === 'done' || data.status === 'error') break;
