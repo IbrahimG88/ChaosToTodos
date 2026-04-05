@@ -9,11 +9,24 @@ export default async function handler(req, res) {
   const { jobId } = req.query;
   try {
     const upstream = await fetch(`${tunnelUrl}/api/parse/${jobId}`, {
-      headers: { 'ngrok-skip-browser-warning': 'true' },
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+        'User-Agent': 'ChaosToTodos-Proxy/1.0',
+      },
     });
-    const data = await upstream.json();
-    res.status(upstream.status).json(data);
+
+    const text = await upstream.text();
+    try {
+      const data = JSON.parse(text);
+      res.status(upstream.status).json(data);
+    } catch {
+      res.status(502).json({
+        error: 'Upstream returned non-JSON',
+        status: upstream.status,
+        preview: text.slice(0, 300),
+      });
+    }
   } catch (err) {
-    res.status(502).json({ error: 'Could not reach local server. Make sure tunnel is running.' });
+    res.status(502).json({ error: 'Could not reach local server.', detail: err.message });
   }
 }
