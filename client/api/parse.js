@@ -6,7 +6,6 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: 'Server not configured. Start the tunnel and set TUNNEL_URL in Vercel.' });
   }
 
-  // req.body is auto-parsed by Vercel for application/json
   const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
 
   try {
@@ -15,13 +14,24 @@ export default async function handler(req, res) {
       headers: {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true',
+        'User-Agent': 'ChaosToTodos-Proxy/1.0',
       },
       body: bodyStr,
-      signal: AbortSignal.timeout(15000),
     });
-    const data = await upstream.json();
-    res.status(upstream.status).json(data);
+
+    const text = await upstream.text();
+    try {
+      const data = JSON.parse(text);
+      res.status(upstream.status).json(data);
+    } catch {
+      // Upstream returned non-JSON — return preview for diagnosis
+      res.status(502).json({
+        error: 'Upstream returned non-JSON',
+        status: upstream.status,
+        preview: text.slice(0, 300),
+      });
+    }
   } catch (err) {
-    res.status(502).json({ error: 'Could not reach local server. Make sure tunnel is running.', detail: err.message });
+    res.status(502).json({ error: 'Could not reach local server.', detail: err.message });
   }
 }
