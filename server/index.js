@@ -99,7 +99,7 @@ function processText(jobId, text) {
   const VALID_IMP  = new Set(['high','medium','low']);
 
   const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('timeout')), 150000)
+    setTimeout(() => reject(new Error('timeout')), 300000)
   );
 
   Promise.race([callClaude(text, SYSTEM_PROMPT), timeout])

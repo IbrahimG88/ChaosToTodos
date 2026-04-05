@@ -572,7 +572,7 @@ function AppInner() {
       const { jobId } = startData;
 
       // Step 2 — poll until done
-      const deadline = Date.now() + 160000;
+      const deadline = Date.now() + 320000;
       let data;
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 2000));
