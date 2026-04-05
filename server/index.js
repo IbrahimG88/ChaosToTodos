@@ -48,6 +48,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '1mb' }));
+app.use(express.text({ limit: '1mb' }));
 
 const SYSTEM_PROMPT = `You are a smart daily planning assistant. Given chaotic, unstructured notes, do TWO things:
 
@@ -144,7 +145,9 @@ app.get('/health', (_req, res) => {
 
 // Start a parse job — returns immediately with a jobId
 app.post('/api/parse', requireAuth, (req, res) => {
-  const { text } = req.body;
+  // Accept both application/json and text/plain (text/plain avoids CORS preflight)
+  const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  const { text } = body || {};
   if (!text || typeof text !== 'string' || text.trim().length === 0)
     return res.status(400).json({ error: 'text is required and must be a non-empty string.' });
   if (text.length > 20000)

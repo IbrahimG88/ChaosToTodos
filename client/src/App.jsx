@@ -554,29 +554,23 @@ function AppInner() {
     setElapsed(0);
     elapsedRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
     try {
-      const token = await getToken({ skipCache: true });
-      const headers = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
-      };
-
+      // Use text/plain + no custom headers → no CORS preflight needed
       // Step 1 — start job (returns immediately)
       const startRes = await fetch(`${API_URL}/api/parse`, {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ text: inputText }),
       });
       const startData = await startRes.json();
       if (!startRes.ok) throw new Error(startData.error || `Error ${startRes.status}`);
       const { jobId } = startData;
 
-      // Step 2 — poll until done
+      // Step 2 — poll until done (GET = always simple, no preflight)
       const deadline = Date.now() + 320000;
       let data;
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 2000));
-        const pollRes = await fetch(`${API_URL}/api/parse/${jobId}`, { headers });
+        const pollRes = await fetch(`${API_URL}/api/parse/${jobId}`);
         data = await pollRes.json();
         if (!pollRes.ok) throw new Error(data.error || `Error ${pollRes.status}`);
         if (data.status === 'done' || data.status === 'error') break;
