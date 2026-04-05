@@ -554,11 +554,10 @@ function AppInner() {
     setElapsed(0);
     elapsedRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
     try {
-      // Use text/plain + no custom headers → no CORS preflight needed
       // Step 1 — start job (returns immediately)
       const startRes = await fetch(`${API_URL}/api/parse`, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText }),
       });
       const startData = await startRes.json();
