@@ -9,7 +9,10 @@ export default async function handler(req, res) {
   try {
     const upstream = await fetch(`${tunnelUrl}/api/parse`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
       body: JSON.stringify(req.body),
     });
     const data = await upstream.json();

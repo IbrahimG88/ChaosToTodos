@@ -8,7 +8,9 @@ export default async function handler(req, res) {
 
   const { jobId } = req.query;
   try {
-    const upstream = await fetch(`${tunnelUrl}/api/parse/${jobId}`);
+    const upstream = await fetch(`${tunnelUrl}/api/parse/${jobId}`, {
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+    });
     const data = await upstream.json();
     res.status(upstream.status).json(data);
   } catch (err) {
